@@ -5,6 +5,20 @@ Bridge from RESTful api to SFTP and FTP.
 
 Beautifully written in Kotlin by Asad, Tom and Uberto
 
+> **Fork note (klima-open-source):** this fork of
+> [uberto/rest4sftp](https://github.com/uberto/rest4sftp) adds **explicit FTPS
+> (FTP over TLS)** support via a new `--ftps` protocol flag, re-enables the
+> Gradle `application` plugin so a runnable distribution is produced, fixes the
+> Dockerfile to build on a maintained JDK image, and ships a ready-to-use
+> [Bruno](https://www.usebruno.com/) API collection under [`bruno/`](bruno/).
+>
+> FTPS mode uses Apache Commons Net's `FTPSClient`, protecting the data channel
+> with `PBSZ 0` + `PROT P`. Example:
+> ```bash
+> rest4sftp-<version>/bin/rest4sftp --ftps --port 8080
+> # then point requests at an FTPS server, e.g. -H "FTP-Port:210"
+> ```
+
 # TL;DR - How it works
 
 rest4sftp translate RESTful HTTP calls into FTP or SFTP calls.

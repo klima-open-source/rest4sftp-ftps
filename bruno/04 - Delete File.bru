@@ -1,0 +1,23 @@
+meta {
+  name: 04 - Delete File
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{base_url}}/file/{{file_path}}
+  body: none
+  auth: none
+}
+
+headers {
+  FTP-Host: {{ftp_host}}
+  FTP-Port: {{ftp_port}}
+  FTP-User: {{ftp_user}}
+  FTP-Password: {{ftp_password}}
+}
+
+docs {
+  Elimina un archivo remoto.
+  200 OK | 400 ruta inválida | 401 credenciales inválidas.
+}

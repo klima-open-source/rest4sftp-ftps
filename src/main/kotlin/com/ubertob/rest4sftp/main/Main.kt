@@ -14,6 +14,7 @@ fun main(args: Array<String>) {
         RestfulServer(CommandHandler {
             when (protocol) {
                 Protocol.FTP -> ApacheCommonsFtpClient(it, Duration.ofSeconds(timeout))
+                Protocol.FTPS -> ApacheCommonsFtpClient(it, Duration.ofSeconds(timeout), secure = true)
                 Protocol.SFTP -> SshJSftpClient(it, Duration.ofSeconds(timeout))
             }
         })

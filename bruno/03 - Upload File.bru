@@ -1,0 +1,31 @@
+meta {
+  name: 03 - Upload File
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{base_url}}/file/{{file_path}}
+  body: text
+  auth: none
+}
+
+headers {
+  FTP-Host: {{ftp_host}}
+  FTP-Port: {{ftp_port}}
+  FTP-User: {{ftp_user}}
+  FTP-Password: {{ftp_password}}
+}
+
+body:text {
+  Hola desde rest4sftp! Este es el contenido del archivo subido.
+}
+
+docs {
+  Sube un archivo desde el cuerpo crudo de la petición; sobrescribe si ya existe.
+  El cuerpo (body) es el contenido binario/texto del archivo tal cual.
+  200 OK | 400 contenido o ruta inválidos | 401 credenciales inválidas.
+
+  Para subir un archivo real en vez de texto, cambia el tipo de body a "File"
+  en la pestaña Body y selecciona el archivo del disco.
+}

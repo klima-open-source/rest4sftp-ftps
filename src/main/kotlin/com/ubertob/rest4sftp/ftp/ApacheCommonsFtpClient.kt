@@ -4,6 +4,7 @@ import com.ubertob.rest4sftp.http.UnauthorisedException
 import com.ubertob.rest4sftp.model.*
 import org.apache.commons.net.PrintCommandListener
 import org.apache.commons.net.ftp.FTPClient
+import org.apache.commons.net.ftp.FTPSClient
 import org.apache.commons.net.ftp.FTPFile
 import org.apache.commons.net.ftp.FTPReply
 import java.io.InputStream
@@ -13,10 +14,13 @@ import java.time.Duration
 class ApacheCommonsFtpClient(
     private val remoteHost: RemoteHost,
     private val timeout: Duration,
-    private val tempExtension: String = ".io"
+    private val tempExtension: String = ".io",
+    private val secure: Boolean = false
 ) : SimpleRemoteClient {
 
-    private val ftp = FTPClient()
+    // FTPSClient (explicit FTP over TLS) extends FTPClient, so the rest of the
+    // code works unchanged whether the connection is plain FTP or FTPS.
+    private val ftp: FTPClient = if (secure) FTPSClient(false) else FTPClient()
 
     fun withDebug() = apply {
         ftp.addProtocolCommandListener(PrintCommandListener(PrintWriter(System.out)))
@@ -26,6 +30,15 @@ class ApacheCommonsFtpClient(
         ftp.setDataTimeout(timeout.toMillis().toInt())
         check("FTP server refused connection.") { ftp.connect(remoteHost.host, remoteHost.port) }
         check("Invalid login.") { ftp.login(remoteHost.userName, remoteHost.password) }
+        if (secure && ftp is FTPSClient) {
+            // Protect the data channel (equivalent to Python's prot_p()).
+            ftp.execPBSZ(0)
+            ftp.execPROT("P")
+            // Many FTPS servers return a data-channel IP that differs from the
+            // control channel; don't fail passive-mode transfers over that.
+            ftp.isUseEPSVwithIPv4 = true
+            ftp.setRemoteVerificationEnabled(false)
+        }
         check("FTP server not able to passive mode.") { ftp.enterLocalPassiveMode() }
     }
 

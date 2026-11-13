@@ -3,6 +3,7 @@ package com.ubertob.rest4sftp.main
 import com.xenomachina.argparser.ArgParser
 import com.xenomachina.argparser.default
 import com.ubertob.rest4sftp.main.Protocol.FTP
+import com.ubertob.rest4sftp.main.Protocol.FTPS
 import com.ubertob.rest4sftp.main.Protocol.SFTP
 
 class MyArgs(parser: ArgParser) {
@@ -10,6 +11,7 @@ class MyArgs(parser: ArgParser) {
 
     val protocol by parser.mapping(
             "--ftp" to FTP,
+            "--ftps" to FTPS,
             "--sftp" to SFTP,
             help = "protocol of remote server").default(SFTP)
 
@@ -19,5 +21,5 @@ class MyArgs(parser: ArgParser) {
 }
 
 enum class Protocol {
-    FTP, SFTP
+    FTP, FTPS, SFTP
 }
