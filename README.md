@@ -1,143 +1,232 @@
 # rest4sftp
 
-Bridge from RESTful api to SFTP and FTP.
+Puente entre una API REST y servidores **SFTP / FTP / FTPS**.
 
+Escrito originalmente en Kotlin por Asad, Tom y Uberto
+([uberto/rest4sftp](https://github.com/uberto/rest4sftp)).
 
-Beautifully written in Kotlin by Asad, Tom and Uberto
+> **Nota de este fork (klima-open-source):** este fork agrega soporte de
+> **FTPS explícito (FTP sobre TLS)** mediante un nuevo modo `--ftps`, reactiva
+> el plugin `application` de Gradle para volver a generar un ejecutable, corrige
+> el `Dockerfile` para que construya sobre una imagen de JDK mantenida, e incluye
+> una colección de API lista para usar con [Bruno](https://www.usebruno.com/) en
+> la carpeta [`bruno/`](bruno/).
 
-> **Fork note (klima-open-source):** this fork of
-> [uberto/rest4sftp](https://github.com/uberto/rest4sftp) adds **explicit FTPS
-> (FTP over TLS)** support via a new `--ftps` protocol flag, re-enables the
-> Gradle `application` plugin so a runnable distribution is produced, fixes the
-> Dockerfile to build on a maintained JDK image, and ships a ready-to-use
-> [Bruno](https://www.usebruno.com/) API collection under [`bruno/`](bruno/).
->
-> FTPS mode uses Apache Commons Net's `FTPSClient`, protecting the data channel
-> with `PBSZ 0` + `PROT P`. Example:
-> ```bash
-> rest4sftp-<version>/bin/rest4sftp --ftps --port 8080
-> # then point requests at an FTPS server, e.g. -H "FTP-Port:210"
-> ```
+---
 
-# TL;DR - How it works
+# Resumen: cómo funciona
 
-rest4sftp translate RESTful HTTP calls into FTP or SFTP calls.
+`rest4sftp` **traduce llamadas HTTP (REST) en operaciones de archivos** sobre un
+servidor FTP, FTPS o SFTP remoto.
 
-You can decide the protocol and other options with cmd line args or env variables.
-
-build and run it:
-```$bash
-git clone https://github.com/uberto/rest4sftp.git
-./gradlew clean build
-cd build/distributions
-unzip rest4sftp-<version>.zip
-rest4sftp-<version>/bin/rest4sftp --sftp --port 8080
+```
+  Cliente HTTP            rest4sftp                 Servidor remoto
+  (curl, Bruno)  ──REST──►  (este puente)  ──FTP/FTPS/SFTP──►  (tu FTP)
 ```
 
-use it:
-```$bash
-// get listing of Upload directory on ftp.myserver.com
-curl -i -X GET http://localhost:8080/folder/Upload -H "FTP-Host:ftp.myserver.com" -H "FTP-Port:22" -H "FTP-User:johnsmith" -H "FTP-Password:****"
+El cliente hace una petición HTTP normal al puente. En **cada petición**, el
+puente lee los datos de conexión al servidor remoto desde los **headers HTTP**
+(`FTP-Host`, `FTP-Port`, `FTP-User`, `FTP-Password`), se conecta al servidor
+remoto, ejecuta la operación (listar, descargar, subir, borrar) y devuelve el
+resultado. El puente **no guarda credenciales**: viajan en cada petición.
 
-// upload myfile.ext to Upload directory on ftp.myserver.com
-curl -i -X PUT --data-binary @myfile.ext http://localhost:8080/file/Upload/myfile.ext -H "FTP-Host:ftp.myserver.com" -H "FTP-Port:22" -H "FTP-User:johnsmith" -H "FTP-Password:****"
+El **protocolo** (FTP plano, FTPS o SFTP) se elige al arrancar el servidor con un
+argumento de línea de comandos:
 
-// retrieve myfile.ext from Upload directory on ftp.myserver.com
-curl -i -X GET http://localhost:8080/file/Upload/myfile.ext -H "FTP-Host:ftp.myserver.com" -H "FTP-Port:22" -H "FTP-User:johnsmith" -H "FTP-Password:****" -o downloaded.zip
+| Argumento | Protocolo | Puerto por defecto |
+|-----------|-----------|--------------------|
+| `--sftp`  | SFTP (sobre SSH)                 | 22 |
+| `--ftp`   | FTP plano (sin cifrar)           | 21 |
+| `--ftps`  | **FTPS explícito (FTP sobre TLS)** | — (indícalo con `FTP-Port`) |
+
+Otros argumentos: `--port <n>` (puerto HTTP del puente, por defecto 8080),
+`--timeout <segundos>` (por defecto 60) y `-v` (modo verboso).
+
+---
+
+# Instalación y ejecución
+
+## Opción A — Docker (recomendada)
+
+No hace falta instalar Java ni Gradle en tu máquina; el `Dockerfile` construye
+todo dentro de la imagen y arranca el puente en el puerto 8080 del contenedor.
+
+```bash
+git clone https://github.com/klima-open-source/rest4sftp-ftps.git
+cd rest4sftp-ftps
+docker build -t rest4sftp:local .
+
+# Arranca el puente en 127.0.0.1:9990 (elige el modo según tu servidor):
+docker run -d --name rest4sftp -p 127.0.0.1:9990:8080/tcp rest4sftp:local --ftps
 ```
 
-# Installation Instructions
+Útiles:
 
-the easiest way is to use the docker image which is configured in `Dockerfile` to start a server on local port 8080. You
-can start the image on 127.0.0.1:9990 (or another port of your choice) by one of the following methods:
-
-## Docker run from source:
-```$bash
-docker build -t uberto/rest4sftp .
-docker run -p 127.0.0.1:9990:8080/tcp uberto/rest4sftp --sftp
+```bash
+docker logs -f rest4sftp     # ver logs
+docker stop rest4sftp        # detener
+docker start rest4sftp       # volver a arrancar
 ```
 
-## Docker run from latest docker hub image:
-```$bash
-docker pull uberto/rest4sftp
-docker run -p 127.0.0.1:9990:8080/tcp uberto/rest4sftp --sftp
-```
+## Opción B — Docker Compose
 
-## Docker-compose run instruction:
-1. create a docker-compose.yml as follows:
-```$yml
-version: 3
+Crea un `docker-compose.yml`:
 
+```yaml
 services:
   rest4sftp:
-    image: "uberto/rest4sftp"
-    port: 9990:8080
-    command: --sftp
-```
-2. run the following to start the docker image:
-```$bash
-cd <to directory where docker-compose.yml was created>
-docker compose up
+    build: .
+    ports:
+      - "127.0.0.1:9990:8080"
+    command: --ftps
 ```
 
+Y levántalo:
 
-# API Reference
+```bash
+docker compose up -d
+```
 
-## List of folder API operations
+## Opción C — Compilar y ejecutar directamente
 
-### GET /folder/foldername
+Requiere **JDK 11** (el wrapper de Gradle 6.7.1 no es compatible con Java 17+).
 
-Returns an `application/json; charset=utf8` representation of the remote folder's contents.
+```bash
+git clone https://github.com/klima-open-source/rest4sftp-ftps.git
+cd rest4sftp-ftps
+./gradlew clean installDist
+build/install/rest4sftp/bin/rest4sftp --ftps --port 8080
+```
 
-Returns 401 if invalid ftp server credentials were present in the request header.
+---
 
-Returns 404 if the folder does not exist.
+# Cómo usarlo (ejemplos con curl)
 
-##List of file API operations
+Suponiendo que el puente corre en `http://localhost:9990`:
 
-### GET /file/path/to/filename
+```bash
+# Listar el contenido de la carpeta "Upload" en un servidor SFTP
+curl -i -X GET http://localhost:9990/folder/Upload \
+  -H "FTP-Host:ftp.myserver.com" -H "FTP-Port:22" \
+  -H "FTP-User:johnsmith" -H "FTP-Password:****"
 
-Returns an `application/octet-stream` of the file's contents.
+# Subir myfile.ext a la carpeta "Upload"
+curl -i -X PUT --data-binary @myfile.ext http://localhost:9990/file/Upload/myfile.ext \
+  -H "FTP-Host:ftp.myserver.com" -H "FTP-Port:22" \
+  -H "FTP-User:johnsmith" -H "FTP-Password:****"
 
-Returns 401 if invalid ftp server credentials were present in the request header.
+# Descargar myfile.ext desde la carpeta "Upload"
+curl -i -X GET http://localhost:9990/file/Upload/myfile.ext \
+  -H "FTP-Host:ftp.myserver.com" -H "FTP-Port:22" \
+  -H "FTP-User:johnsmith" -H "FTP-Password:****" -o descargado.ext
+```
 
-Returns 404 if the file path does not exist.
+### Ejemplo contra un servidor FTPS (TLS)
 
-### PUT /file/path/to/filename
+Para servidores que exigen TLS, arranca el puente con `--ftps` y usa el puerto
+del servidor FTPS (p. ej. 210). El puente cifra el canal de datos
+automáticamente (`PBSZ 0` + `PROT P`):
 
-Returns 200 if the file was successfully uploaded. The file contents is specified as raw data in the request body. If
-the file already exists in the remote server then it will be overwritten.
+```bash
+docker run -d --name rest4sftp -p 127.0.0.1:9990:8080/tcp rest4sftp:local --ftps
 
-Returns 400 if there was a problem with the file contents or file path.
+curl -i -X GET http://localhost:9990/folder/MI_CARPETA \
+  -H "FTP-Host:mi.servidor-ftps.com" -H "FTP-Port:210" \
+  -H "FTP-User:usuario" -H "FTP-Password:****"
+```
 
-Returns 401 if invalid ftp server credentials were present in the request header.
+---
 
-### DELETE /file/path/to/filename
+# Probar con Bruno
 
-Returns 200 if the file was successfully deleted.
+La carpeta [`bruno/`](bruno/) contiene una colección lista para usar con
+[Bruno](https://www.usebruno.com/) con los cuatro endpoints:
 
-Returns 400 if there was a problem with the file contents or file path.
+1. Abre Bruno → **Open Collection** → selecciona la carpeta `bruno/`.
+2. Arriba a la derecha, selecciona el entorno **Local**.
+3. En el entorno **Local**, completa las variables de conexión:
+   `ftp_host`, `ftp_port`, `ftp_user` y `ftp_password` (esta última se guarda
+   como **secreto** de Bruno, fuera del repositorio).
+4. Abre un request (p. ej. *01 - List Folder*) y pulsa **Send**.
 
-Returns 401 if invalid ftp server credentials were present in the request header.
+Variables del entorno:
 
-## Request Headers
+| Variable | Qué es |
+|----------|--------|
+| `base_url` | URL del puente `rest4sftp` (p. ej. `http://127.0.0.1:9990`) |
+| `ftp_host` / `ftp_port` | Host y puerto del servidor remoto |
+| `ftp_user` / `ftp_password` | Credenciales del servidor remoto |
+| `folder` / `file_path` | Carpeta o archivo remoto sobre el que operar |
 
-The following are required HTTP request headers:
-* FTP-Host: the remote (s)ftp server's hostname or IP
-* FTP-Port: the remote (s)ftp server's port (default is 21 for ftp, 22 for sftp)
+> El repositorio **no incluye credenciales reales**: las variables traen
+> placeholders y la contraseña se guarda en el almacén de secretos de Bruno.
 
-And either:
+---
 
-* FTP-User: the name of the ftp account on the remote server
-* FTP-Password: the password for the ftp account on the remote server
+# Referencia de la API
 
-Or:
+## Operaciones sobre carpetas
 
-* Authorization: a basic auth header (RFC7617) containing the ftp account name and password
+### `GET /folder/{nombre_carpeta}`
 
-# Code design
+Devuelve el contenido de la carpeta remota como `application/json; charset=utf8`.
 
-The main fun is in the class `com.ubertob.rest4sftp.main.MainKt`
+- `401` si las credenciales del servidor en los headers son inválidas.
+- `404` si la carpeta no existe.
 
-The main classes are: **TODO**
+## Operaciones sobre archivos
 
+### `GET /file/{ruta/al/archivo}`
+
+Devuelve el contenido del archivo como `application/octet-stream`.
+
+- `401` si las credenciales son inválidas.
+- `404` si la ruta no existe.
+
+### `PUT /file/{ruta/al/archivo}`
+
+Sube un archivo. El contenido va como **datos crudos en el cuerpo** de la
+petición. Si el archivo ya existe en el servidor remoto, se sobrescribe.
+
+- `200` si se subió correctamente.
+- `400` si hubo un problema con el contenido o la ruta.
+- `401` si las credenciales son inválidas.
+
+### `DELETE /file/{ruta/al/archivo}`
+
+Borra un archivo del servidor remoto.
+
+- `200` si se borró correctamente.
+- `400` si hubo un problema con la ruta.
+- `401` si las credenciales son inválidas.
+
+## Headers de la petición
+
+Obligatorios:
+
+* `FTP-Host`: hostname o IP del servidor remoto.
+* `FTP-Port`: puerto del servidor remoto (por defecto 21 para FTP, 22 para SFTP).
+
+Y, para las credenciales, **una** de estas dos formas:
+
+* `FTP-User` + `FTP-Password`: usuario y contraseña de la cuenta en el servidor
+  remoto, **o**
+* `Authorization`: un header de Basic Auth (RFC 7617) con usuario y contraseña.
+
+---
+
+# Diseño del código
+
+- El punto de entrada es `com.ubertob.rest4sftp.main.MainKt`.
+- El servidor HTTP (http4k) vive en `com.ubertob.rest4sftp.http.RestfulServer`.
+- Cada protocolo implementa la interfaz `SimpleRemoteClient`:
+  - `ApacheCommonsFtpClient` → FTP y **FTPS** (parámetro `secure`), usando
+    Apache Commons Net.
+  - `SshJSftpClient` → SFTP, usando SSHJ.
+
+---
+
+# Licencia
+
+Apache License 2.0 (ver [`LICENSE`](LICENSE)), heredada del proyecto original
+[uberto/rest4sftp](https://github.com/uberto/rest4sftp).
